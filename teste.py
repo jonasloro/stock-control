@@ -28,7 +28,8 @@ ESTRUTURA_CD = {
     "Rua 10": {"tipo": "G", "cols_impar": list(range(21, 104, 2)), "cols_par": list(range(22, 103, 2))},
     "Rua 11": {"tipo": "G_Unilateral", "cols_impar": [], "cols_par": list(range(22, 95, 2))},
     "Rua 12": {"tipo": "Inexistente", "cols_impar": [], "cols_par": []},
-    "Rua 14": {"tipo": "Especial_Rua_14", "cols_impar": [], "cols_par": [], "cols_seq": list(range(1, 49))},
+    "Rua 13": {"tipo": "Inexistente", "cols_impar": [], "cols_par": []},
+    "Rua 14": {"tipo": "Especial_Rua_14", "cols_impar": [], "cols_par": [], "cols_seq": list(range(1, 32)) + list(range(42, 49))},
     "Rua 15": {"tipo": "Misto_Lado_15", "cols_impar": list(range(1, 88, 2)), "cols_par": list(range(2, 139, 2))},
     "Rua 16": {"tipo": "G", "metal": [43], "cols_impar": list(range(1, 101, 2)), "cols_par": list(range(2, 102, 2))},
     "Rua 17": {"tipo": "G", "metal": [101, 102, 103, 104, 105, 106], "cols_impar": list(range(1, 115, 2)), "cols_par": list(range(2, 116, 2))},
@@ -190,10 +191,6 @@ def obter_niveis_e_capacidade_pecas(rua_nome, coluna, lado="impar", temporada="M
             v_comum = int(250 * fator)
             vol_dict = {n: int(180 * fator) if n == "F" else v_comum for n in niveis_14}
             return niveis_14, vol_dict, "Rua 14 - Metal Profundo"
-        elif 32 <= col <= 41:
-            niveis_14 = ["A", "B", "C", "D"]
-            vol_dict = {n: int(90 * fator) for n in niveis_14}
-            return niveis_14, vol_dict, "Rua 14 - Carrinhos"
         elif 42 <= col <= 48:
             niveis_14 = ["B", "C", "D", "E", "F"]
             vol_dict = {n: int(120 * fator) for n in niveis_14}
@@ -250,6 +247,22 @@ if 'busca_destaque' not in st.session_state:
     st.session_state.busca_destaque = None
 if 'aba_ativa_selecionada' not in st.session_state:
     st.session_state.aba_ativa_selecionada = "🏠 Tela Inicial (Geral)"
+
+# Base de usuários (login/senha/papel). Guardada em memória (session_state),
+# assim como o restante da base de dados do sistema — reinicia se a página
+# recarregar. Papel "gerente" tem acesso à aba Gerenciador e a funções críticas;
+# papel "operador" tem acesso apenas às telas operacionais.
+USUARIOS_PADRAO = {
+    "admin": {"senha": "admin123", "papel": "gerente"}
+}
+if 'usuarios_cadastrados' not in st.session_state:
+    st.session_state.usuarios_cadastrados = dict(USUARIOS_PADRAO)
+if 'autenticado' not in st.session_state:
+    st.session_state.autenticado = False
+if 'usuario_atual' not in st.session_state:
+    st.session_state.usuario_atual = None
+if 'papel_atual' not in st.session_state:
+    st.session_state.papel_atual = None
 
 
 # ==========================================
@@ -420,6 +433,41 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ==========================================
+# BLOCO 1.5: PORTAL DE AUTENTICAÇÃO (LOGIN)
+# ==========================================
+if not st.session_state.autenticado:
+    st.markdown("""
+    <div class="logo-container">
+        <div class="logo-icone">⚠️📦</div>
+        <h1 class="logo-texto">STOCK CONTROL</h1>
+        <div class="logo-sub">Gestão por Peças por Casulo</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<h3 style='text-align:center; color:#ffcc00;'>🔐 Acesso ao Sistema</h3>", unsafe_allow_html=True)
+
+    col_login_esq, col_login_meio, col_login_dir = st.columns([1, 1.2, 1])
+    with col_login_meio:
+        with st.form("form_login"):
+            usuario_input = st.text_input("Usuário")
+            senha_input = st.text_input("Senha", type="password")
+            submit_login = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+
+        if submit_login:
+            dados_usuario = st.session_state.usuarios_cadastrados.get(usuario_input)
+            if dados_usuario and dados_usuario["senha"] == senha_input:
+                st.session_state.autenticado = True
+                st.session_state.usuario_atual = usuario_input
+                st.session_state.papel_atual = dados_usuario["papel"]
+                st.rerun()
+            else:
+                st.error("⚠️ Usuário ou senha inválidos.")
+
+        st.markdown("<p style='text-align:center; color:#8892b0; font-size:11px; margin-top:10px;'>Acesso padrão inicial: <b>admin</b> / <b>admin123</b><br>(crie os logins da equipe e troque essa senha na aba Gerenciador)</p>", unsafe_allow_html=True)
+
+    st.stop()
+
 # SIDEBAR: NAVEGAÇÃO E TEMPORADA
 st.sidebar.markdown("<h2 style='color: #ffcc00; text-align: center;'>⚙️ NAVEGAÇÃO</h2>", unsafe_allow_html=True)
 
@@ -429,7 +477,20 @@ opcoes_telas = [
     "🔍 Consulta Rápida de Casulos", 
     "📥 Entrada de Dados / Abastecimento"
 ]
+if st.session_state.papel_atual == "gerente":
+    opcoes_telas.append("🛠️ Gerenciador (Admin)")
+
+if st.session_state.aba_ativa_selecionada not in opcoes_telas:
+    st.session_state.aba_ativa_selecionada = "🏠 Tela Inicial (Geral)"
+
 st.session_state.aba_ativa_selecionada = st.sidebar.radio("Selecione a Tela:", opcoes_telas, index=opcoes_telas.index(st.session_state.aba_ativa_selecionada))
+
+st.sidebar.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>👤 <b>{st.session_state.usuario_atual}</b> ({st.session_state.papel_atual.capitalize()})</p>", unsafe_allow_html=True)
+if st.sidebar.button("🚪 Sair"):
+    st.session_state.autenticado = False
+    st.session_state.usuario_atual = None
+    st.session_state.papel_atual = None
+    st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("<h4 style='color: #ffcc00; text-align: center;'>☀️❄️ Inteligência Sazonal</h4>", unsafe_allow_html=True)
@@ -589,6 +650,39 @@ if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
             </div>
             """, unsafe_allow_html=True)
 
+    st.write("---")
+    st.markdown("<h4 style='text-align: center; color: #ffcc00;'>📈 Ranking de Ocupação por Corredor (%)</h4>", unsafe_allow_html=True)
+
+    dados_ranking = []
+    for rua in ruas_nomes:
+        if ESTRUTURA_CD[rua].get("tipo") == "Inexistente":
+            continue
+        p_max_rk = 0
+        p_at_rk = 0
+        for chave, p_at in st.session_state.base_dados_cd.items():
+            r_n, lado_r, c_r, n_r = chave.split("|")
+            if r_n == rua:
+                l_param_rk = "par" if rua == "Rua 11" else ("impar" if lado_r == "seq" else lado_r)
+                _, c_d_rk, _ = obter_niveis_e_capacidade_pecas(rua, int(c_r), l_param_rk, st.session_state.temporada_atual)
+                p_max_rk += c_d_rk.get(n_r, 10)
+                p_at_rk += p_at
+        pct_rk = (p_at_rk / p_max_rk * 100) if p_max_rk > 0 else 0.0
+        dados_ranking.append({"Rua": rua, "Ocupação (%)": round(pct_rk, 1)})
+
+    if dados_ranking:
+        df_ranking = pd.DataFrame(dados_ranking).set_index("Rua")
+        st.bar_chart(df_ranking, color="#ffcc00")
+
+        df_ordenado = pd.DataFrame(dados_ranking).sort_values("Ocupação (%)", ascending=False)
+        rua_mais_cheia = df_ordenado.iloc[0]
+        rua_mais_vazia = df_ordenado.iloc[-1]
+
+        kcol_rank1, kcol_rank2 = st.columns(2)
+        with kcol_rank1:
+            st.markdown(f"<div class='card-dashboard'><h5>🔥 Corredor Mais Cheio</h5><h2>{rua_mais_cheia['Rua']}</h2><p style='color:#8892b0; margin-top:4px; font-size:12px;'>{rua_mais_cheia['Ocupação (%)']:.1f}% ocupado</p></div>", unsafe_allow_html=True)
+        with kcol_rank2:
+            st.markdown(f"<div class='card-dashboard'><h5>🌤️ Corredor Mais Livre</h5><h2>{rua_mais_vazia['Rua']}</h2><p style='color:#8892b0; margin-top:4px; font-size:12px;'>{rua_mais_vazia['Ocupação (%)']:.1f}% ocupado</p></div>", unsafe_allow_html=True)
+
 
 # ==========================================
 # TELA 2: VISUALIZADOR DE CASULOS
@@ -622,13 +716,12 @@ elif st.session_state.aba_ativa_selecionada == "📦 Visualizador de Casulos":
         """, unsafe_allow_html=True)
 
         if rua_selecionada == "Rua 14":
-            st.markdown("<p style='text-align:center; color:#8892b0; font-size:13px;'>Corredor segmentado por Tipologia Estrutural (Madeira, Metal e Carrinhos)</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center; color:#8892b0; font-size:13px;'>Corredor segmentado por Tipologia Estrutural (Madeira e Metal)</p>", unsafe_allow_html=True)
             
             blocos_r14 = [
                 ("🌲 Bloco 1: Prateleiras de Madeira Gigante (Colunas 01 a 23)", list(range(1, 24))),
                 ("🔩 Bloco 2: Prateleiras de Metal Profundo (Colunas 24 a 31)", list(range(24, 32))),
-                ("🛒 Bloco 3: Setor de Carrinhos (Colunas 32 a 41)", list(range(32, 42))),
-                ("⚙️ Bloco 4: Prateleiras de Metal Raso (Colunas 42 a 48)", list(range(42, 49)))
+                ("⚙️ Bloco 3: Prateleiras de Metal Raso (Colunas 42 a 48)", list(range(42, 49)))
             ]
             
             for titulo_bloco, cols_bloco in blocos_r14:
@@ -838,11 +931,26 @@ elif st.session_state.aba_ativa_selecionada == "📦 Visualizador de Casulos":
                 colunas_impares = [c for c in colunas_exemplo if c in todas_cols_impares]
                 colunas_pares = [c for c in colunas_exemplo if c in todas_cols_pares]
 
-                exemplo_col_ref = colunas_impares[0] if colunas_impares else (colunas_pares[0] if colunas_pares else 1)
-                l_param_ref = "impar" if colunas_impares else "par"
+                # CORREÇÃO (Rua 15 e outras ruas "Misto_Lado"): antes os níveis exibidos no
+                # grid eram calculados a partir de UM único lado de referência (o ímpar,
+                # quando existia). Isso fazia o lado com config diferente (ex: Rua 15 par = M,
+                # com 14 níveis) ficar com linhas faltando no grid, pois usava a lista de
+                # níveis do lado ímpar (G, com apenas 7 níveis). Agora cada lado calcula seus
+                # próprios níveis e o grid usa a união dos dois, preservando a capacidade real
+                # de cada lado (a lógica de capacidade em si já estava correta).
+                niveis_impar_ref, _, tipo_desc_impar = obter_niveis_e_capacidade_pecas(
+                    rua_selecionada, colunas_impares[0], "impar", st.session_state.temporada_atual
+                ) if colunas_impares else ([], {}, "")
+                niveis_par_ref, _, tipo_desc_par = obter_niveis_e_capacidade_pecas(
+                    rua_selecionada, colunas_pares[0], "par", st.session_state.temporada_atual
+                ) if colunas_pares else ([], {}, "")
 
-                niveis_exibicao, _, tipo_desc = obter_niveis_e_capacidade_pecas(rua_selecionada, exemplo_col_ref, l_param_ref, st.session_state.temporada_atual)
-                niveis_ordenados = sorted(niveis_exibicao)
+                niveis_ordenados = sorted(set(niveis_impar_ref) | set(niveis_par_ref))
+
+                if tipo_desc_impar and tipo_desc_par and tipo_desc_impar != tipo_desc_par:
+                    tipo_desc = f"Ímpar: {tipo_desc_impar} | Par: {tipo_desc_par}"
+                else:
+                    tipo_desc = tipo_desc_impar or tipo_desc_par
 
                 st.markdown(f"<p style='text-align:center; color:#8892b0; font-size:12px;'>Especificação: <b>{tipo_desc}</b> | Estação: <b>{st.session_state.temporada_atual}</b></p>", unsafe_allow_html=True)
 
@@ -1046,23 +1154,84 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
 
     with tab_cad2:
         st.markdown("#### Manutenção Geral da Base de Dados")
-        st.warning("⚠️ Atenção: Os botões abaixo modificam permanentemente a quantidade de peças em todo o CD na memória.")
 
-        c_A, c_B = st.columns(2)
-        with c_A:
-            if st.button("Zerar Todos os Casulos (0 Peças)"):
-                for k in st.session_state.base_dados_cd.keys():
-                    st.session_state.base_dados_cd[k] = 0
-                st.success("Todos os casulos foram zerados com sucesso!")
-                st.rerun()
-        with c_B:
-            if st.button("Popular com Dados Simulados Aleatórios"):
-                np.random.seed(321)
-                for k in st.session_state.base_dados_cd.keys():
-                    r_n, l_n, c_n, n_n = k.split("|")
-                    l_param_pop = "par" if r_n == "Rua 11" else ("impar" if l_n == "seq" else l_n)
-                    _, c_d, _ = obter_niveis_e_capacidade_pecas(r_n, int(c_n), l_param_pop, st.session_state.temporada_atual)
-                    p_max_val = c_d.get(n_n, 50)
-                    st.session_state.base_dados_cd[k] = int(np.random.choice([0, int(p_max_val * 0.3), int(p_max_val * 0.7), p_max_val]))
-                st.success("Base populada com dados de teste em peças!")
-                st.rerun()
+        if st.session_state.papel_atual != "gerente":
+            st.info("🔒 Ações globais na base são funções críticas, restritas ao papel de Gerente.")
+        else:
+            st.warning("⚠️ Atenção: Os botões abaixo modificam permanentemente a quantidade de peças em todo o CD na memória.")
+
+            c_A, c_B = st.columns(2)
+            with c_A:
+                if st.button("Zerar Todos os Casulos (0 Peças)"):
+                    for k in st.session_state.base_dados_cd.keys():
+                        st.session_state.base_dados_cd[k] = 0
+                    st.success("Todos os casulos foram zerados com sucesso!")
+                    st.rerun()
+            with c_B:
+                if st.button("Popular com Dados Simulados Aleatórios"):
+                    np.random.seed(321)
+                    for k in st.session_state.base_dados_cd.keys():
+                        r_n, l_n, c_n, n_n = k.split("|")
+                        l_param_pop = "par" if r_n == "Rua 11" else ("impar" if l_n == "seq" else l_n)
+                        _, c_d, _ = obter_niveis_e_capacidade_pecas(r_n, int(c_n), l_param_pop, st.session_state.temporada_atual)
+                        p_max_val = c_d.get(n_n, 50)
+                        st.session_state.base_dados_cd[k] = int(np.random.choice([0, int(p_max_val * 0.3), int(p_max_val * 0.7), p_max_val]))
+                    st.success("Base populada com dados de teste em peças!")
+                    st.rerun()
+
+
+# ==========================================
+# TELA 5: GERENCIADOR (ADMIN)
+# ==========================================
+elif st.session_state.aba_ativa_selecionada == "🛠️ Gerenciador (Admin)":
+    if st.session_state.papel_atual != "gerente":
+        st.error("⛔ Acesso restrito a usuários com papel de Gerente.")
+    else:
+        st.markdown("<h3 style='text-align: center; color: #ffcc00;'>🛠️ Painel do Gerenciador</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #8892b0;'>Funções críticas disponíveis apenas para o papel de Gerente.</p>", unsafe_allow_html=True)
+
+        tab_ger1, tab_ger2 = st.tabs(["👥 Gestão de Logins", "🧾 Usuários Cadastrados"])
+
+        with tab_ger1:
+            st.markdown("#### Criar Novo Login")
+            col_g1, col_g2, col_g3 = st.columns(3)
+            with col_g1:
+                novo_usuario = st.text_input("Novo usuário (login)", key="novo_usuario_input")
+            with col_g2:
+                nova_senha = st.text_input("Senha", type="password", key="nova_senha_input")
+            with col_g3:
+                novo_papel = st.selectbox("Papel", ["operador", "gerente"], key="novo_papel_input")
+
+            if st.button("➕ Criar Usuário", type="primary"):
+                if not novo_usuario or not nova_senha:
+                    st.error("⚠️ Preencha usuário e senha.")
+                elif novo_usuario in st.session_state.usuarios_cadastrados:
+                    st.error(f"⚠️ O usuário '{novo_usuario}' já existe.")
+                else:
+                    st.session_state.usuarios_cadastrados[novo_usuario] = {"senha": nova_senha, "papel": novo_papel}
+                    st.success(f"Usuário '{novo_usuario}' criado como {novo_papel}!")
+                    st.rerun()
+
+            st.markdown("---")
+            st.markdown("#### Remover Usuário")
+            usuarios_removiveis = [u for u in st.session_state.usuarios_cadastrados.keys() if u != st.session_state.usuario_atual]
+            if usuarios_removiveis:
+                usuario_remover = st.selectbox("Selecione o usuário a remover", usuarios_removiveis, key="usuario_remover_input")
+                if st.button("🗑️ Remover Usuário Selecionado"):
+                    total_gerentes = sum(1 for u in st.session_state.usuarios_cadastrados.values() if u["papel"] == "gerente")
+                    if st.session_state.usuarios_cadastrados[usuario_remover]["papel"] == "gerente" and total_gerentes <= 1:
+                        st.error("⚠️ Não é possível remover o último gerente do sistema.")
+                    else:
+                        del st.session_state.usuarios_cadastrados[usuario_remover]
+                        st.success(f"Usuário '{usuario_remover}' removido!")
+                        st.rerun()
+            else:
+                st.info("Não há outros usuários cadastrados para remover.")
+
+        with tab_ger2:
+            st.markdown("#### Usuários com Acesso ao Sistema")
+            lista_usuarios_df = pd.DataFrame([
+                {"Usuário": u, "Papel": dados["papel"].capitalize()}
+                for u, dados in st.session_state.usuarios_cadastrados.items()
+            ])
+            st.dataframe(lista_usuarios_df, use_container_width=True, hide_index=True)
