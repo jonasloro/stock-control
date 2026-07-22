@@ -30,7 +30,8 @@ ESTRUTURA_CD = {
     "Rua 10": {"tipo": "G", "cols_impar": list(range(21, 104, 2)), "cols_par": list(range(22, 103, 2))},
     "Rua 11": {"tipo": "G_Unilateral", "cols_impar": [], "cols_par": list(range(22, 95, 2))},
     "Rua 12": {"tipo": "Inexistente", "cols_impar": [], "cols_par": []},
-    "Rua 14": {"tipo": "Especial_Rua_14", "cols_impar": [], "cols_par": [], "cols_seq": list(range(1, 49))},
+    "Rua 13": {"tipo": "Inexistente", "cols_impar": [], "cols_par": []},
+    "Rua 14": {"tipo": "Especial_Rua_14", "cols_impar": [], "cols_par": [], "cols_seq": list(range(1, 24)) + list(range(26, 49))},
     "Rua 15": {"tipo": "Misto_Lado_15", "cols_impar": list(range(1, 88, 2)), "cols_par": list(range(2, 139, 2))},
     "Rua 16": {"tipo": "G", "metal": [43], "cols_impar": list(range(1, 101, 2)), "cols_par": list(range(2, 102, 2))},
     "Rua 17": {"tipo": "G", "metal": [101, 102, 103, 104, 105, 106], "cols_impar": list(range(1, 115, 2)), "cols_par": list(range(2, 116, 2))},
@@ -203,19 +204,11 @@ def obter_niveis_e_capacidade_pecas(rua_nome, coluna, lado="impar", temporada="M
             v_p = int(450 * fator)
             vol_dict = {n: (v_p if n == "P" else v_comum) for n in niveis_14}
             return niveis_14, vol_dict, "Rua 14 - Madeira Gigante"
-        elif 24 <= col <= 31:
+        elif 26 <= col <= 48:
             niveis_14 = ["B", "C", "D", "E", "F"]
             v_comum = int(250 * fator)
             vol_dict = {n: int(180 * fator) if n == "F" else v_comum for n in niveis_14}
             return niveis_14, vol_dict, "Rua 14 - Metal Profundo"
-        elif 32 <= col <= 41:
-            niveis_14 = ["A", "B", "C", "D"]
-            vol_dict = {n: int(90 * fator) for n in niveis_14}
-            return niveis_14, vol_dict, "Rua 14 - Carrinhos"
-        elif 42 <= col <= 48:
-            niveis_14 = ["B", "C", "D", "E", "F"]
-            vol_dict = {n: int(120 * fator) for n in niveis_14}
-            return niveis_14, vol_dict, "Rua 14 - Metal Raso"
     elif tipo == "Rua 02":
         if col < 103:
             vol_dict = {n: int(45 * fator) for n in NIVEIS_P}
@@ -231,6 +224,7 @@ def obter_niveis_e_capacidade_pecas(rua_nome, coluna, lado="impar", temporada="M
             vol_dict = {n: int(45 * fator) for n in NIVEIS_P}
             return NIVEIS_P, vol_dict, "Pequeno (P)"
     elif tipo == "Misto_Lado_15":
+        # ALTERAÇÃO: Rua 15 invertida - Par = M, Ímpar = G
         if lado == "par":
             vol_dict = {n: int(80 * fator) for n in NIVEIS_M}
             return NIVEIS_M, vol_dict, "Médio (M)"
@@ -663,13 +657,12 @@ elif st.session_state.aba_ativa_selecionada == "📦 Visualizador de Casulos":
         """, unsafe_allow_html=True)
 
         if rua_selecionada == "Rua 14":
-            st.markdown("<p style='text-align:center; color:#8892b0; font-size:13px;'>Corredor segmentado por Tipologia Estrutural (Madeira, Metal e Carrinhos)</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center; color:#8892b0; font-size:13px;'>Corredor segmentado por Tipologia Estrutural (Madeira e Metal)</p>", unsafe_allow_html=True)
             
+            # ALTERAÇÃO: Rua 14 com Setor 3 removido - colunas 24 e 25 removidas
             blocos_r14 = [
                 ("🌲 Bloco 1: Prateleiras de Madeira Gigante (Colunas 01 a 23)", list(range(1, 24))),
-                ("🔩 Bloco 2: Prateleiras de Metal Profundo (Colunas 24 a 31)", list(range(24, 32))),
-                ("🛒 Bloco 3: Setor de Carrinhos (Colunas 32 a 41)", list(range(32, 42))),
-                ("⚙️ Bloco 4: Prateleiras de Metal Raso (Colunas 42 a 48)", list(range(42, 49)))
+                ("⚙️ Bloco 2: Prateleiras de Metal (Colunas 26 a 48)", list(range(26, 49)))
             ]
             
             for titulo_bloco, cols_bloco in blocos_r14:
