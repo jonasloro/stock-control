@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import random
 import re
+from collections import defaultdict
+from functools import lru_cache
 
 # 1. CONFIGURAÇÃO DE PÁGINA
 st.set_page_config(
@@ -37,6 +39,20 @@ ESTRUTURA_CD = {
     "Rua 20": {"tipo": "Aramado_P_Seq_20", "metal_cols": [35, 37, 39], "cols_impar": [], "cols_par": [], "cols_seq": list(range(35, 138, 2))},
     "Rua 21": {"tipo": "Metal_Seq_21", "cols_impar": [], "cols_par": [], "cols_seq": list(range(1, 78, 2))}
 }
+
+# Converter listas para sets para lookup O(1)
+ESTRUTURA_CD_SETS = {}
+for rua, cfg in ESTRUTURA_CD.items():
+    ESTRUTURA_CD_SETS[rua] = {
+        "tipo": cfg["tipo"],
+        "cols_impar": set(cfg.get("cols_impar", [])),
+        "cols_par": set(cfg.get("cols_par", [])),
+        "cols_seq": cfg.get("cols_seq", []),
+        "metal": set(cfg.get("metal", [])),
+        "metal_cols": set(cfg.get("metal_cols", [])),
+        "metal_impar": set(cfg.get("metal_impar", [])),
+        "metal_par": set(cfg.get("metal_par", []))
+    }
 
 NIVEIS_G = ["B", "E", "H", "K", "N", "Q", "T"]
 NIVEIS_M = ["B", "D", "E", "G", "H", "J", "K", "M", "N", "P", "Q", "S", "T", "V"]
@@ -126,7 +142,9 @@ def obter_chave_casulo(rua_nome, lado, coluna, nivel):
         col_int = 1
     return f"{rua_nome}|{lado}|{col_int:03d}|{str(nivel).upper()}"
 
+@st.cache_data(ttl=3600)
 def obter_niveis_e_capacidade_pecas(rua_nome, coluna, lado="impar", temporada="Meia-Estação"):
+    """Função cacheada para evitar recomputação repetida."""
     try:
         col = int(coluna)
     except (ValueError, TypeError):
@@ -244,7 +262,14 @@ if 'base_dados_cd' not in st.session_state:
                 niveis, _, _ = obter_niveis_e_capacidade_pecas(r_nome, c, l_param, st.session_state.temporada_atual)
                 for n in niveis:
                     chave_casulo = obter_chave_casulo(r_nome, lado, c, n)
-                    st.session_state.base_dados_cd[chave_casulo] = 0 
+                    st.session_state.base_dados_cd[chave_casulo] = 0
+
+# Build indexed data structures for fast lookup (NEW)
+if 'casulos_por_rua' not in st.session_state:
+    st.session_state.casulos_por_rua = defaultdict(list)
+    for chave in st.session_state.base_dados_cd.keys():
+        r_nome = chave.split("|")[0]
+        st.session_state.casulos_por_rua[r_nome].append(chave)
 
 if 'busca_destaque' not in st.session_state:
     st.session_state.busca_destaque = None
@@ -440,6 +465,7 @@ with c_bt1:
     if btn_verao:
         st.session_state.temporada_atual = "Verão"
         st.session_state.frase_sazonal = random.choice(FRASES_VERAO)
+        obter_niveis_e_capacidade_pecas.clear()  # Clear cache when season changes
         st.rerun()
 
 with c_bt2:
@@ -447,6 +473,7 @@ with c_bt2:
     if btn_meia:
         st.session_state.temporada_atual = "Meia-Estação"
         st.session_state.frase_sazonal = random.choice(FRASES_MEIA)
+        obter_niveis_e_capacidade_pecas.clear()
         st.rerun()
 
 with c_bt3:
@@ -454,6 +481,7 @@ with c_bt3:
     if btn_inverno:
         st.session_state.temporada_atual = "Inverno"
         st.session_state.frase_sazonal = random.choice(FRASES_INVERNO)
+        obter_niveis_e_capacidade_pecas.clear()
         st.rerun()
 
 # CAIXA DE MIX ATUAL PINTADA DE AMARELO COM FRASE ALEATÓRIA
@@ -515,28 +543,48 @@ st.markdown("""
 if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
     st.markdown("<h3 style='text-align: center; color: #ffcc00;'>📊 Painel Geral de Ocupação em Peças</h3>", unsafe_allow_html=True)
     
-    total_pecas_capacidade = 0
-    total_pecas_atuais = 0
-    casulos_livres = 0
-    total_casulos = len(st.session_state.base_dados_cd)
-
-    for chave, pecas_atuais in st.session_state.base_dados_cd.items():
-        r_nome, lado, c_str, n = chave.split("|")
-        l_param = "par" if r_nome == "Rua 11" else ("impar" if lado == "seq" else lado)
-        _, cap_dict, _ = obter_niveis_e_capacidade_pecas(r_nome, int(c_str), l_param, st.session_state.temporada_atual)
-        p_max = cap_dict.get(n, 10)
-        total_pecas_capacidade += p_max
-        total_pecas_atuais += pecas_atuais
-        if pecas_atuais == 0:
-            casulos_livres += 1
-
-    pct_geral = (total_pecas_atuais / total_pecas_capacidade * 100) if total_pecas_capacidade > 0 else 0.0
+    # OTIMIZAÇÃO: Pre-compute dashboard metrics (NEW)
+    @st.cache_data
+    def calcular_metricas_dashboard():
+        total_pecas_capacidade = 0
+        total_pecas_atuais = 0
+        casulos_livres = 0
+        metricas_por_rua = {}
+        
+        for chave, pecas_atuais in st.session_state.base_dados_cd.items():
+            r_nome, lado, c_str, n = chave.split("|")
+            l_param = "par" if r_nome == "Rua 11" else ("impar" if lado == "seq" else lado)
+            _, cap_dict, _ = obter_niveis_e_capacidade_pecas(r_nome, int(c_str), l_param, st.session_state.temporada_atual)
+            p_max = cap_dict.get(n, 10)
+            
+            total_pecas_capacidade += p_max
+            total_pecas_atuais += pecas_atuais
+            if pecas_atuais == 0:
+                casulos_livres += 1
+            
+            # Build per-rua metrics
+            if r_nome not in metricas_por_rua:
+                metricas_por_rua[r_nome] = {"atual": 0, "max": 0}
+            metricas_por_rua[r_nome]["atual"] += pecas_atuais
+            metricas_por_rua[r_nome]["max"] += p_max
+        
+        return {
+            "total_casulos": len(st.session_state.base_dados_cd),
+            "total_pecas_capacidade": total_pecas_capacidade,
+            "total_pecas_atuais": total_pecas_atuais,
+            "casulos_livres": casulos_livres,
+            "metricas_por_rua": metricas_por_rua
+        }
+    
+    metricas = calcular_metricas_dashboard()
+    
+    pct_geral = (metricas["total_pecas_atuais"] / metricas["total_pecas_capacidade"] * 100) if metricas["total_pecas_capacidade"] > 0 else 0.0
 
     kcol1, kcol2, kcol3, kcol4 = st.columns(4)
-    with kcol1: st.markdown(f"<div class='card-dashboard'><h5>Total Casulos</h5><h2>{total_casulos:,}</h2></div>", unsafe_allow_html=True)
+    with kcol1: st.markdown(f"<div class='card-dashboard'><h5>Total Casulos</h5><h2>{metricas['total_casulos']:,}</h2></div>", unsafe_allow_html=True)
     with kcol2: st.markdown(f"<div class='card-dashboard'><h5>Ocupação Média</h5><h2>{pct_geral:.1f}%</h2></div>", unsafe_allow_html=True)
-    with kcol3: st.markdown(f"<div class='card-dashboard'><h5>Casulos Zerados</h5><h2>{casulos_livres:,}</h2></div>", unsafe_allow_html=True)
-    with kcol4: st.markdown(f"<div class='card-dashboard'><h5>Peças Armazenadas</h5><h2>{total_pecas_atuais:,} un</h2></div>", unsafe_allow_html=True)
+    with kcol3: st.markdown(f"<div class='card-dashboard'><h5>Casulos Zerados</h5><h2>{metricas['casulos_livres']:,}</h2></div>", unsafe_allow_html=True)
+    with kcol4: st.markdown(f"<div class='card-dashboard'><h5>Peças Armazenadas</h5><h2>{metricas['total_pecas_atuais']:,} un</h2></div>", unsafe_allow_html=True)
     
     st.write("---")
     st.markdown("<h4 style='text-align: center; color: #ffcc00;'>🗺️ Mapa de Calor por Rua (Contagem de Peças)</h4>", unsafe_allow_html=True)
@@ -565,16 +613,9 @@ if st.session_state.aba_ativa_selecionada == "🏠 Tela Inicial (Geral)":
                 """, unsafe_allow_html=True)
             continue
         
-        p_rua_max = 0
-        p_rua_atual = 0
-        for chave, p_at in st.session_state.base_dados_cd.items():
-            r_n, lado_r, c_r, n_r = chave.split("|")
-            if r_n == rua:
-                l_param = "par" if rua == "Rua 11" else ("impar" if lado_r == "seq" else lado_r)
-                _, c_d, _ = obter_niveis_e_capacidade_pecas(rua, int(c_r), l_param, st.session_state.temporada_atual)
-                p_rua_max += c_d.get(n_r, 10)
-                p_rua_atual += p_at
-        
+        # Use pre-computed metrics (OPTIMIZATION)
+        p_rua_atual = metricas["metricas_por_rua"].get(rua, {}).get("atual", 0)
+        p_rua_max = metricas["metricas_por_rua"].get(rua, {}).get("max", 0)
         pct_rua = (p_rua_atual / p_rua_max * 100) if p_rua_max > 0 else 0.0
         classe_cor = obter_classe_cor(pct_rua)
         
@@ -835,8 +876,11 @@ elif st.session_state.aba_ativa_selecionada == "📦 Visualizador de Casulos":
                 else:
                     colunas_exemplo = todas_colunas
 
-                colunas_impares = [c for c in colunas_exemplo if c in todas_cols_impares]
-                colunas_pares = [c for c in colunas_exemplo if c in todas_cols_pares]
+                # OTIMIZAÇÃO: Use sets para membership testing (NEW)
+                set_cols_impares = set(todas_cols_impares)
+                set_cols_pares = set(todas_cols_pares)
+                colunas_impares = [c for c in colunas_exemplo if c in set_cols_impares]
+                colunas_pares = [c for c in colunas_exemplo if c in set_cols_pares]
 
                 exemplo_col_ref = colunas_impares[0] if colunas_impares else (colunas_pares[0] if colunas_pares else 1)
                 l_param_ref = "impar" if colunas_impares else "par"
