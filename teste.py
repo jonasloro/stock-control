@@ -1066,4 +1066,3 @@ elif st.session_state.aba_ativa_selecionada == "📥 Entrada de Dados / Abasteci
                     st.session_state.base_dados_cd[k] = int(np.random.choice([0, int(p_max_val * 0.3), int(p_max_val * 0.7), p_max_val]))
                 st.success("Base populada com dados de teste em peças!")
                 st.rerun()
-
